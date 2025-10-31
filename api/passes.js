@@ -6,17 +6,26 @@ export default async function handler(request, response) {
   }
 
   try {
-    const res = await fetch(`https://inventory.roblox.com/v1/users/${userid}/items/GamePass`);
+    const res = await fetch(
+      `https://catalog.roblox.com/v1/search/items?creatorId=${userid}&creatorType=User&limit=30&sortOrder=Desc`
+    );
     const data = await res.json();
 
-    const passes = data?.data?.map(pass => ({
-      id: pass.id,
-      name: pass.name,
-      price: pass.product?.priceInRobux ?? 0
-    })) ?? [];
+    // Filter enkel items die echt te koop staan
+    const items = data?.data
+      ?.filter(item => item.isForSale)
+      ?.map(item => ({
+        id: item.id,
+        name: item.name,
+        price: item.price ?? 0,
+        type: item.itemType,
+        assetType: item.assetType,
+        thumbnail: item.thumbnail?.imageUrl ?? null
+      })) ?? [];
 
-    return response.status(200).json(passes);
+    return response.status(200).json(items);
   } catch (err) {
-    return response.status(500).json({ error: "Failed to fetch game passes" });
+    console.error(err);
+    return response.status(500).json({ error: "Failed to fetch user items" });
   }
 }
