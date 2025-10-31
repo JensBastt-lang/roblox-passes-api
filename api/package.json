@@ -1,0 +1,6 @@
+{
+  "name": "roblox-passes-api",
+  "version": "1.0.0",
+  "main": "api/passes.js",
+  "license": "MIT"
+}
