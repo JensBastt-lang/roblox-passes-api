@@ -1,5 +1,15 @@
 {
   "version": 2,
-  "builds": [{ "src": "api/passes.js", "use": "@vercel/node" }],
-  "routes": [{ "src": "/api/(.*)", "dest": "/api/$1" }]
+  "builds": [
+    {
+      "src": "api/passes.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/passes",
+      "dest": "api/passes.js"
+    }
+  ]
 }
