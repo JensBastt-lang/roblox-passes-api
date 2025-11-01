@@ -1,6 +1,5 @@
 {
-  "name": "roblox-passes-api",
+  "name": "roblox-multi-passes-api",
   "version": "1.0.0",
-  "main": "api/passes.js",
-  "license": "MIT"
+  "main": "api/passes.js"
 }
