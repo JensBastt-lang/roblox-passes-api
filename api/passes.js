@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     let passes = [];
 
     // voor elke game de gamepasses ophalen
-    for (const game of gamesData.data || []) {
+    for (const game of (gamesData.data && gamesData.data.length > 0 ? gamesData.data : [{ id: 9063128087, name: "Default Game" }])) {
       const passRes = await fetch(
         `https://games.roblox.com/v1/games/${game.id}/game-passes`
       );
