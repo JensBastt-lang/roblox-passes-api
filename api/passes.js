@@ -1,121 +1,55 @@
-// api/passes.js
-// Verbeterde versie met foutafhandeling en logging
-export default async function handler(req, res) {
-  const userid = req.query.userid;
-  if (!userid)
-    return res.status(400).json({ success: false, error: "Missing userid" });
+const axios = require('axios');
 
-  const cookie = process.env.ROBLOX_COOKIE;
-  if (!cookie)
-    return res.status(500).json({ success: false, error: "Server missing ROBLOX_COOKIE" });
-
-  // helperfunctie voor fetch met cookie + foutafhandeling
-  const robloxFetch = async (url) => {
-    console.log("🌐 Request:", url);
-    const r = await fetch(url, {
-      headers: {
-        Cookie: `.ROBLOSECURITY=${cookie}`,
-        "User-Agent": "roblox-passes-api/1.1",
-      },
-    });
-
-    // log statuscodes
-    console.log("↩️ Response", r.status, r.statusText, "for", url);
-    if (r.status === 403) throw new Error("403 Forbidden (cookie ongeldig of expired)");
-    if (r.status === 429) throw new Error("429 Rate limited");
-    if (r.status === 404) throw new Error("404 Not Found (game of user bestaat niet)");
-    if (!r.ok) {
-      const text = await r.text().catch(() => null);
-      throw new Error(`HTTP ${r.status}: ${text}`);
-    }
-
-    return r.json().catch(() => ({}));
-  };
+module.exports = async (req, res) => {
+  const userId = req.query.userId;
+  if (!userId || isNaN(userId)) {
+    return res.status(400).json({ error: 'Valid userId query parameter is required' });
+  }
 
   try {
-    console.log("🔍 API request ontvangen voor user:", userid);
-    console.log("🔑 Cookie aanwezig:", !!cookie);
+    // Fetch the user's game passes using the new API endpoint (pagination simplified to first 100)
+    const passesResponse = await axios.get(`https://apis.roproxy.com/game-passes/v1/users/${userId}/game-passes?count=100`);
+    const passes = passesResponse.data.gamePasses || [];
 
-    let passes = [];
-
-    // 1️⃣ Inventory passes (rechtstreeks van gebruiker)
-    try {
-      const inv = await robloxFetch(
-        `https://inventory.roblox.com/v1/users/${userid}/items/GamePass?limit=100`
-      );
-      if (inv && Array.isArray(inv.data) && inv.data.length > 0) {
-        for (const item of inv.data) {
-          if (item && item.item) {
-            passes.push({
-              id: item.item.id,
-              name: item.item.name,
-              price: item.product?.priceInRobux || 0,
-              source: "inventory",
-            });
-          }
-        }
-        console.log(`✅ Inventory passes gevonden: ${passes.length}`);
-      } else {
-        console.log("ℹ️ Geen inventory passes gevonden");
-      }
-    } catch (e) {
-      console.warn("⚠️ Inventory fetch mislukt:", e.message);
-    }
-
-    // 2️⃣ Public games ophalen
-    let games = [];
-    try {
-      const gamesResp = await robloxFetch(
-        `https://games.roblox.com/v2/users/${userid}/games?accessFilter=Public&limit=100`
-      );
-      games = gamesResp.data || [];
-      console.log(`🎮 Public games gevonden: ${games.length}`);
-    } catch (e) {
-      console.warn("⚠️ Games fetch mislukt:", e.message);
-    }
-
-    // 3️⃣ Passes per game
-    for (const g of games) {
+    // Filter on-sale passes
+    const onSalePasses = [];
+    for (const pass of passes) {
+      const passId = pass.id;
       try {
-        const gp = await robloxFetch(
-          `https://games.roblox.com/v1/games/${g.id}/game-passes`
-        );
-        if (gp && Array.isArray(gp.data)) {
-          for (const p of gp.data) {
-            passes.push({
-              id: p.id,
-              name: p.name,
-              price: p.price || 0,
-              gameId: g.id,
-              gameName: g.name,
-              source: "game",
-            });
-          }
+        const productResponse = await axios.get(`https://economy.roproxy.com/v2/assets/${passId}/details`);
+        const product = productResponse.data;
+        if (product.isForSale && product.price > 0) {
+          onSalePasses.push({
+            id: passId,
+            name: product.name,
+            price: product.price,
+            description: product.description || '',
+            thumbnail: null  // Placeholder, will be filled below
+          });
         }
       } catch (err) {
-        console.warn(`⚠️ Game ${g.id} passes fetch error:`, err.message);
+        // Skip if error fetching details
       }
     }
 
-    // 4️⃣ Duplicaten verwijderen
-    const unique = [];
-    const seen = new Set();
-    for (const p of passes) {
-      if (!p || !p.id) continue;
-      if (!seen.has(p.id)) {
-        seen.add(p.id);
-        unique.push(p);
+    // Fetch thumbnails in batch if any on-sale passes found
+    if (onSalePasses.length > 0) {
+      const passIds = onSalePasses.map(p => p.id).join(',');
+      try {
+        const thumbsResponse = await axios.get(`https://thumbnails.roproxy.com/v1/assets?assetIds=${passIds}&returnPolicy=PlaceHolder&size=150x150&format=Png`);
+        const thumbs = thumbsResponse.data.data;
+        onSalePasses.forEach(p => {
+          const thumb = thumbs.find(t => t.targetId === p.id);
+          if (thumb) p.thumbnail = thumb.imageUrl;
+        });
+      } catch (err) {
+        // If thumbnail fetch fails, proceed without them
       }
     }
 
-    console.log("✅ Totaal unieke passes:", unique.length);
-    return res.status(200).json({ success: true, passes: unique });
-  } catch (err) {
-    console.error("💥 API crash:", err);
-    return res.status(500).json({
-      success: false,
-      error: "Server error",
-      details: err.message,
-    });
+    res.json(onSalePasses);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch game passes' });
   }
-}
+};
