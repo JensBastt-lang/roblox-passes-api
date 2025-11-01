@@ -1,5 +1,6 @@
 {
   "name": "roblox-multi-passes-api",
   "version": "1.0.0",
-  "main": "api/passes.js"
+  "private": true,
+  "type": "module"
 }
